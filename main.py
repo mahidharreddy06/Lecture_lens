@@ -1,3 +1,6 @@
+import setup_env
+setup_env.ensure_environment()
+
 import cv2
 import math
 import os
