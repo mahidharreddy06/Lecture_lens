@@ -1,0 +1,11 @@
+opencv-python
+mediapipe
+fer
+filterpy
+scipy
+matplotlib
+reportlab
+google-genai
+python-dotenv
+numpy
+pandas
