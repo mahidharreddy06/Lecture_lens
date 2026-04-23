@@ -3,10 +3,7 @@ from utils.sort import Sort
 
 class Tracker:
     def __init__(self):
-        # max_age: Maximum number of frames to keep alive a track without associated detections.
-        # min_hits: Minimum number of associated detections before track is initialised.
-        # iou_threshold: Minimum IOU for match.
-        self.tracker = Sort(max_age=30, min_hits=2, iou_threshold=0.2)
+        self.tracker = Sort(max_age=30, min_hits=1, iou_threshold=0.05)
         
     def update(self, detections):
         """

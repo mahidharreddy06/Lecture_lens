@@ -61,114 +61,107 @@ class UI:
         return frame
 
     def generate_student_graph(self, student_id):
-        student = self.state_manager.students.get(student_id)
-        if not student or not student.history:
-            return np.zeros((300, 400, 3), dtype=np.uint8)
+        try:
+            student = self.state_manager.students.get(student_id)
+            if not student or not student.history or len(student.history) < 2:
+                return np.zeros((400, self.dashboard_width, 3), dtype=np.uint8)
 
-        now = time.time()
-        # Update graph once per second to prevent FPS drops
-        if student_id in self.chart_cache and now - self.last_update_time.get(student_id, 0) < 1.0:
-            return self.chart_cache[student_id]
+            now = time.time()
+            if student_id in self.chart_cache and now - self.last_update_time.get(student_id, 0) < 1.0:
+                return self.chart_cache[student_id]
 
-        # Use dark background elements
-        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(4, 4), dpi=100)
-        fig.patch.set_facecolor('#1E1E1E')
-        ax1.set_facecolor('#1E1E1E')
-        ax2.set_facecolor('#1E1E1E')
-        
-        # Plot entire session history
-        now_time = time.time()
-        recent_history = student.history
-        
-        times = [r['time'] for r in recent_history]
-        scores = [r['score'] for r in recent_history]
-        
-        # Plot relative to session start
-        session_start = self.state_manager.session_start
-        rel_times = [t - session_start for t in times]
-        
-        ax1.plot(rel_times, scores, color='cyan', linewidth=2)
-        ax1.set_title(f"Student {student_id} Attention", color='white', pad=10)
-        
-        max_time = max(now_time - session_start, 10.0)
-        ax1.set_xlim(0, max_time)
-        ax1.set_ylabel("Score", color='white')
-        ax1.set_ylim(-10, 110)
-        
-        # Remove spines for cleaner look
-        for spine in ax1.spines.values():
-            spine.set_visible(False)
+            from matplotlib.figure import Figure
+            from matplotlib.backends.backend_agg import FigureCanvasAgg
+
+            # Use Figure for thread safety (prevents the 'clicked face' crash)
+            fig = Figure(figsize=(4, 4), dpi=100)
+            canvas = FigureCanvasAgg(fig)
+            fig.patch.set_facecolor('#1E1E1E')
             
-        # Calculate emotion tallies
-        emotions = [record['emotion'] for record in student.history]
-        unique_emotions = list(set(emotions))
-        counts = [emotions.count(e) for e in unique_emotions]
-        
-        ax2.bar(unique_emotions, counts, color='#FF57A0') # Magenta-ish accent
-        ax2.set_title("Emotion Distribution", color='white', pad=10)
-        ax2.tick_params(axis='x', rotation=45, colors='white')
-        
-        for spine in ax2.spines.values():
-            spine.set_visible(False)
-        
-        fig.tight_layout()
-        fig.canvas.draw()
-        
-        img = np.asarray(fig.canvas.buffer_rgba())
-        plt.close(fig)
-        
-        bgr_img = cv2.cvtColor(img, cv2.COLOR_RGBA2BGR)
-        self.chart_cache[student_id] = bgr_img
-        self.last_update_time[student_id] = now
-        return bgr_img
+            ax1, ax2 = fig.subplots(2, 1)
+            ax1.set_facecolor('#1E1E1E')
+            ax2.set_facecolor('#1E1E1E')
+            
+            recent_history = student.history
+            times = [r['time'] for r in recent_history]
+            scores = [r['score'] for r in recent_history]
+            session_start = self.state_manager.session_start
+            rel_times = [t - session_start for t in times]
+            
+            ax1.plot(rel_times, scores, color='cyan', linewidth=2)
+            ax1.set_title(f"Student {student_id} Attention", color='white', fontsize=10)
+            ax1.set_ylim(-10, 110)
+            ax1.set_ylabel("Score", color='white', fontsize=8)
+            ax1.tick_params(colors='white', labelsize=8)
+            for spine in ax1.spines.values(): spine.set_visible(False)
+            
+            emotions = [record['emotion'] for record in student.history]
+            unique_emotions = sorted(list(set(emotions)))
+            counts = [emotions.count(e) for e in unique_emotions]
+            
+            if unique_emotions:
+                ax2.bar(unique_emotions, counts, color='#FF57A0')
+            ax2.set_title("Emotion Distribution", color='white', fontsize=10)
+            ax2.tick_params(axis='x', rotation=45, colors='white', labelsize=8)
+            ax2.tick_params(axis='y', colors='white', labelsize=8)
+            for spine in ax2.spines.values(): spine.set_visible(False)
+            
+            fig.tight_layout()
+            canvas.draw()
+            rgba_buf = canvas.buffer_rgba()
+            img = np.asarray(rgba_buf)
+            
+            bgr_img = cv2.cvtColor(img, cv2.COLOR_RGBA2BGR) if img.shape[2] == 4 else img[:,:,:3]
+            
+            if bgr_img.shape[1] != self.dashboard_width:
+                bgr_img = cv2.resize(bgr_img, (self.dashboard_width, bgr_img.shape[0]))
+
+            self.chart_cache[student_id] = bgr_img
+            self.last_update_time[student_id] = now
+            return bgr_img
+        except Exception as e:
+            return np.zeros((400, self.dashboard_width, 3), dtype=np.uint8)
 
     def draw_dashboard(self, frame):
-        h, w, c = frame.shape
-        # Create a dark sophisticated background instead of pure black
-        dash = np.full((h, self.dashboard_width, 3), (30, 30, 30), dtype=np.uint8)
-        
-        # Modern fonts
-        font = cv2.FONT_HERSHEY_SIMPLEX
-        
-        # Draw class engagement prominently on the dashboard
-        class_score = self.state_manager.calculate_class_engagement()
-        score_color = self.colors['green'] if class_score > 60 else (self.colors['yellow'] if class_score > 30 else self.colors['red'])
-        
-        cv2.putText(dash, "LECTURE LENS", (20, 40), font, 0.8, (255, 255, 255), 2, cv2.LINE_AA)
-        
-        session_time = int(time.time() - self.state_manager.session_start)
-        smins, ssecs = divmod(session_time, 60)
-        cv2.putText(dash, f"{smins:02d}:{ssecs:02d}", (320, 40), font, 0.6, (200, 200, 200), 1, cv2.LINE_AA)
-        cv2.line(dash, (20, 50), (380, 50), (80, 80, 80), 1)
-        
-        cv2.putText(dash, "Class Engagement", (20, 90), font, 0.6, (200, 200, 200), 1, cv2.LINE_AA)
-        cv2.putText(dash, f"{class_score}%", (20, 140), font, 1.5, score_color, 3, cv2.LINE_AA)
-
-        cv2.putText(dash, "Click a face to inspect", (20, 180), font, 0.5, (150, 150, 150), 1, cv2.LINE_AA)
-        
-        focused_obj = self.state_manager.focused_student_id
-        if focused_obj is not None:
-            student = self.state_manager.students.get(focused_obj)
-            l_time = int(student.get_listened_time()) if student else 0
-            lmins, lsecs = divmod(l_time, 60)
-            cv2.putText(dash, f"Focus Time: {lmins:02d}:{lsecs:02d}", (220, 180), font, 0.5, self.colors['green'], 1, cv2.LINE_AA)
+        try:
+            h, w, c = frame.shape
+            dash = np.full((h, self.dashboard_width, 3), (30, 30, 30), dtype=np.uint8)
+            font = cv2.FONT_HERSHEY_SIMPLEX
             
-            chart = self.generate_student_graph(focused_obj)
-            ch, cw, _ = chart.shape
-            # Drop it in the dashboard below the overall stats
-            start_y = 200
-            if start_y + ch <= h:
-                dash[start_y:start_y+ch, :self.dashboard_width] = chart
-            else:
-                dash[h-ch:h, :self.dashboard_width] = chart
+            class_score = self.state_manager.calculate_class_engagement()
+            score_color = self.colors['green'] if class_score > 60 else (self.colors['yellow'] if class_score > 30 else self.colors['red'])
+            
+            cv2.putText(dash, "LECTURE LENS", (20, 40), font, 0.8, (255, 255, 255), 2, cv2.LINE_AA)
+            session_time = int(time.time() - self.state_manager.session_start)
+            smins, ssecs = divmod(session_time, 60)
+            cv2.putText(dash, f"{smins:02d}:{ssecs:02d}", (320, 40), font, 0.6, (200, 200, 200), 1, cv2.LINE_AA)
+            cv2.line(dash, (20, 50), (380, 50), (80, 80, 80), 1)
+            
+            cv2.putText(dash, "Class Engagement", (20, 90), font, 0.6, (200, 200, 200), 1, cv2.LINE_AA)
+            cv2.putText(dash, f"{class_score}%", (20, 140), font, 1.5, score_color, 3, cv2.LINE_AA)
+            
+            focused_obj = self.state_manager.focused_student_id
+            if focused_obj is not None:
+                chart = self.generate_student_graph(focused_obj)
+                ch, cw, _ = chart.shape
+                
+                # Rescale chart if the dashboard is too short (prevents broadcast crash)
+                if h < 600:
+                    new_ch = max(100, h - 200)
+                    chart = cv2.resize(chart, (self.dashboard_width, new_ch))
+                    ch = new_ch
 
-        cv2.putText(dash, "[Q] Quit  [E] Export Report", (20, h - 20), font, 0.5, (100, 100, 100), 1, cv2.LINE_AA)
+                start_y = 200
+                if start_y + ch <= h:
+                    dash[start_y:start_y+ch, :self.dashboard_width] = chart
+                else:
+                    dash[h-ch:h, :self.dashboard_width] = chart
 
-        # Draw a subtle separator line
-        cv2.line(frame, (w-1, 0), (w-1, h), (50, 50, 50), 2)
-        
-        combined = np.hstack((frame, dash))
-        return combined
+            cv2.putText(dash, "[Q] Quit  [E] Export Report", (20, h - 20), font, 0.5, (100, 100, 100), 1, cv2.LINE_AA)
+            cv2.line(frame, (w-1, 0), (w-1, h), (50, 50, 50), 2)
+            return np.hstack((frame, dash))
+        except Exception:
+            return frame
 
 def mouse_callback(event, x, y, flags, param):
     if event == cv2.EVENT_LBUTTONDOWN:
