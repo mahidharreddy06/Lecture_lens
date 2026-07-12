@@ -1,10 +1,10 @@
 # Lecture Lens
 
-Lecture Lens is an advanced, automated classroom monitoring and engagement analysis system. It leverages real-time computer vision and generative AI to track student attendance, monitor focus levels, analyze emotional states, and provide intelligent summaries of classroom sessions.
+Lecture Lens is a basic, automated classroom monitoring and engagement analysis system. It leverages real-time computer vision and generative AI to track student attendance, monitor focus levels, analyze emotional states, and provide intelligent summaries of classroom sessions.
 
 ## Core Capabilities
 
-*   **Real-time Student Tracking**: Utilizes state-of-the-art bounding box tracking (SORT) to persistently identify and monitor multiple students simultaneously, even with occlusions.
+*   **Real-time Student Tracking**: Utilizes bounding box tracking (SORT) to persistently identify and monitor multiple students simultaneously, even with occlusions.
 *   **Behavioral Analysis**: Computes head pose (yaw/pitch/roll) and Eye Aspect Ratio (EAR) using Mediapipe Face Landmarker to accurately determine focus and fatigue.
 *   **Emotion Recognition**: Integrates FER (Facial Expression Recognition) to log real-time emotional states, helping educators understand class sentiment.
 *   **Interaction Detection**: Detects raised hands via Mediapipe Hand Landmarker, tracking active student participation.
